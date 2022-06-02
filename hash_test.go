@@ -333,3 +333,81 @@ func BenchmarkHashList(b *testing.B) {
 		gohashtree.Hash(digests, balances)
 	}
 }
+
+// This test shows how to use gohashtree to merkleize an already chunkified
+// sparse merkle tree. The input is a list of 7 chunks and the limit is 32.
+func TestMerkleizeSparseVector(t *testing.T) {
+	// generate the input
+	vec := make([][32]byte, 7)
+	for i := uint8(0); i < 7; i++ {
+		vec[i] = intToHash(i)
+	}
+
+	root := vectorHTR(vec, 32)
+	expected := [32]byte{0x1d, 0x6a, 0x2d, 0x06, 0x7b, 0x88, 0x37, 0x5f, 0xdb, 0x1a, 0xed, 0xd0, 0xe2, 0xb3, 0xae, 0x4d, 0x52, 0xe1, 0xc1, 0x71, 0x34, 0x10, 0xba, 0xbd, 0x51, 0xee, 0x8e, 0xf0, 0xac, 0x91, 0x14, 0xbd}
+	if expected != root {
+		t.Logf("HTR are different:\nExpected: %x\nProduced: %x\n", expected, root)
+		t.Fail()
+	}
+}
+
+func vectorHTR(vec [][32]byte, limit int) [32]byte {
+	//first round computing how many chunks the full part of the merkle tree will need.
+	layer := len(vec)
+	length := 0
+	depth := 0
+	for layer > 1 {
+		layer = (layer + 1) / 2
+		length += 2 * layer
+		depth++
+	}
+	length++
+
+	// allocate the buffer
+	layer = len(vec)
+	initlength := (layer + 1) / 2 * 2
+	vec = append(vec, make([][32]byte, length-len(vec))...)
+	// second round adding the zerohashes in the right places
+	offset := 0
+	for j := 0; layer > 1; j++ {
+		if layer%2 == 1 {
+			offset += layer + 1
+			vec[offset-1] = zeroHash[j]
+			layer = (layer + 1) / 2
+		} else {
+			offset += layer
+			layer /= 2
+		}
+	}
+
+	// hash the full tree in one pass
+	gohashtree.Hash(vec[initlength:], vec[:len(vec)-len(vec)%2])
+
+	// Now add the remaining zero hashes corresponding to a sparse tree.
+	for ; 1<<depth < limit; depth++ {
+		vec = append(vec, zeroHash[depth])
+		gohashtree.Hash(vec[len(vec)-1:], vec[len(vec)-2:])
+	}
+	return vec[len(vec)-1]
+}
+
+func intToHash(i uint8) [32]byte {
+	buff := make([][32]byte, 2)
+	buff[0][0] = byte(i)
+	gohashtree.Hash(buff, buff)
+	return buff[0]
+}
+
+var zeroHash = computeZeroHash()
+
+func computeZeroHash() [][32]byte {
+	buff := make([][32]byte, 32)
+	for j := 32; j > 1; j /= 2 {
+		gohashtree.Hash(buff[:j/2], buff[:j])
+	}
+	ret := make([][32]byte, 6)
+	for i := 0; i < 5; i++ {
+		ret[i+1] = buff[1>>i]
+	}
+	return ret
+}
