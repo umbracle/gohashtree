@@ -30,7 +30,8 @@ import (
 	"github.com/klauspost/cpuid/v2"
 )
 
+var hasSSE = cpuid.CPU.Supports(cpuid.SSE3)
 var hasAVX512 = cpuid.CPU.Supports(cpuid.AVX512F, cpuid.AVX512VL)
 var hasAVX2 = cpuid.CPU.Supports(cpuid.AVX2, cpuid.BMI2)
 var hasShani = cpuid.CPU.Supports(cpuid.SHA, cpuid.AVX)
-var supportedCPU = hasAVX2 || hasShani || hasAVX512
+var supportedCPU = hasSSE || hasAVX2 || hasShani || hasAVX512
